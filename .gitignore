@@ -7,12 +7,65 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+*/node_modules
+backend/*/node_modules
+
+# Build outputs
 dist
 dist-ssr
+build
+*/build
+*/bin
+*/obj
 *.local
 
-# Editor directories and files
+# C++ build files
+backend/cpp/build/
+backend/cpp/*.o
+backend/cpp/*.exe
+backend/cpp/cmake_install.cmake
+backend/cpp/CMakeCache.txt
+backend/cpp/CMakeFiles/
+
+# C# build files
+backend/csharp/bin/
+backend/csharp/obj/
+*.dll
+*.pdb
+
+# PHP dependencies
+backend/php/vendor/
+backend/php/composer.lock
+
+# Visual Basic build files
+backend/vb/bin/
+backend/vb/obj/
+
+# Gateway dependencies and logs
+backend/gateway/node_modules/
+backend/gateway/logs/
+backend/gateway/*.log
+
+# Docker and deployment
+docker-compose.override.yml
+.env
+.env.local
+.env.production
+.env.development
+
+# Database and cache
+data/
+mongodb-data/
+redis-data/
+
+# PWA and assets
+assets/icons/*.png
+assets/screenshots/*.png
+src/assets/generated/
+
+# IDE and Editor files
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +75,30 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Operating system files
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Service-specific ignores
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and testing
+coverage/
+*.lcov
+.nyc_output
+
+# Runtime and process files
+.PM2*
+.strongloop
+.node_repl_history
+.lock-wscript

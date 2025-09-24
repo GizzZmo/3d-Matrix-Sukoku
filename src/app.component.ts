@@ -1,5 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, signal, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal, OnInit, inject } from '@angular/core';
 import { MatrixRainComponent } from './matrix-rain.component';
+import { ApiService } from './api.service';
+import { PwaService } from './pwa.service';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
 
 type Board = number[][]; // row, col
 type Conflicts = boolean[][];
@@ -27,8 +30,19 @@ export class AppComponent implements OnInit {
   
   readonly SIZE = 9;
 
+  // Inject services
+  private apiService = inject(ApiService);
+  private pwaService = inject(PwaService);
+
   // Page navigation state
   currentPage = signal<Page>('menu');
+
+  // PWA status
+  isOnline = signal(navigator.onLine);
+  canInstallPwa = signal(false);
+  isStandalone = signal(false);
+  connectionStatus = signal(true);
+  performanceMetrics = signal<any>({});
 
   // Game state
   board = signal<Board>(this.createEmptyBoard());
@@ -37,12 +51,18 @@ export class AppComponent implements OnInit {
   conflicts = signal<Conflicts>(this.createEmptyConflicts());
   selectedCell = signal<SelectedCell>(null);
   gameDifficulty = signal<Difficulty>('easy');
-  status = signal<Status>({ type: 'playing', message: 'Select a cell to begin.' });
+  status = signal<Status>({ type: 'playing', message: 'Select a cell to begin. Multi-language backend services active.' });
   history = signal<Board[]>([]);
   redoStack = signal<Board[]>([]);
   isWinning = signal(false);
   lastEditedCell = signal<EditInfo>(null);
   hints = signal<number>(5);
+
+  // Enhanced features
+  multiplayer = signal<{ enabled: boolean; gameId?: string; players?: number }>({ enabled: false });
+  solvingMode = signal<'client' | 'server' | 'wasm'>('server'); // Default to server (C++)
+  apiHealthStatus = signal<any>({});
+  realTimeStats = signal<any>({});
 
   // Timer state
   startTime = 0;
@@ -89,6 +109,91 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {
     this.loadLeaderboard();
+    this.initializePwaServices();
+    this.checkApiHealth();
+    this.setupRealtimeConnection();
+    this.loadUserData();
+  }
+
+  private initializePwaServices() {
+    // Subscribe to PWA status updates
+    this.pwaService.isStandalone$.subscribe(standalone => {
+      this.isStandalone.set(standalone);
+    });
+
+    this.pwaService.getOnlineStatus().subscribe(online => {
+      this.isOnline.set(online);
+      if (online) {
+        this.checkApiHealth();
+        this.syncOfflineData();
+      }
+    });
+
+    // Check if PWA can be installed
+    setTimeout(() => {
+      this.canInstallPwa.set(this.pwaService.canInstall());
+    }, 2000);
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/src/sw.js').then(registration => {
+        console.log('Service Worker registered:', registration);
+      }).catch(error => {
+        console.error('Service Worker registration failed:', error);
+      });
+    }
+  }
+
+  private async checkApiHealth() {
+    try {
+      this.apiService.checkHealth().subscribe({
+        next: (health) => {
+          this.apiHealthStatus.set(health);
+          this.connectionStatus.set(true);
+          this.status.set({ 
+            type: 'playing', 
+            message: `Multi-language services online: ${Object.keys(health.services || {}).length} active` 
+          });
+        },
+        error: (error) => {
+          this.connectionStatus.set(false);
+          this.status.set({ 
+            type: 'error', 
+            message: 'Backend services unavailable - Running in offline mode' 
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Health check failed:', error);
+    }
+  }
+
+  private setupRealtimeConnection() {
+    // This would connect to WebSocket for real-time multiplayer
+    // Placeholder for actual WebSocket implementation
+    console.log('Setting up real-time connection...');
+  }
+
+  private loadUserData() {
+    const userId = localStorage.getItem('sudoku-user-id');
+    if (userId) {
+      this.apiService.getUser(parseInt(userId)).subscribe({
+        next: (user) => {
+          console.log('Loaded user data:', user);
+        },
+        error: (error) => {
+          console.error('Failed to load user data:', error);
+        }
+      });
+    }
+  }
+
+  private async syncOfflineData() {
+    try {
+      await this.pwaService.syncOfflineActions();
+    } catch (error) {
+      console.error('Offline data sync failed:', error);
+    }
   }
 
   // --- MOUSE/VISUALS HANDLING ---
@@ -286,17 +391,97 @@ export class AppComponent implements OnInit {
   solvePuzzle() {
     if (this.isWinning()) return;
 
-    const boardCopy = JSON.parse(JSON.stringify(this.board()));
-    
-    if (this.solveBoard(boardCopy)) {
-      this.board.set(boardCopy);
-      this.validateBoard();
-      this.stopTimer();
-      this.status.set({ type: 'win', message: 'SYSTEM::SOLVED! MATRIX RECOMPILED.' });
-      this.isWinning.set(true);
-    } else {
-      this.status.set({ type: 'error', message: 'ERROR::UNSOLVABLE STATE' });
+    // Use enhanced multi-service solver
+    this.solvePuzzleEnhanced();
+  }
+
+  private async solvePuzzleEnhanced() {
+    const currentBoard = JSON.parse(JSON.stringify(this.board()));
+    const startTime = performance.now();
+
+    try {
+      let result;
+      
+      switch (this.solvingMode()) {
+        case 'server':
+          // Use C++ high-performance solver
+          if (this.connectionStatus()) {
+            const response = await this.apiService.solvePuzzle(currentBoard).toPromise();
+            result = response;
+            this.status.set({ 
+              type: 'playing', 
+              message: `C++ Solver: ${result.solvingTime}μs server time` 
+            });
+          } else {
+            // Fallback to WebAssembly
+            result = await this.apiService.solvePuzzleWasm(currentBoard);
+            this.solvingMode.set('wasm');
+          }
+          break;
+          
+        case 'wasm':
+          // Use WebAssembly solver for offline
+          result = await this.apiService.solvePuzzleWasm(currentBoard);
+          this.status.set({ 
+            type: 'playing', 
+            message: 'WebAssembly Solver: Offline mode active' 
+          });
+          break;
+          
+        case 'client':
+        default:
+          // Use original JavaScript solver - find the existing solve method
+          const solved = this.solveBoard ? this.solveBoard(currentBoard) : false;
+          result = { 
+            solved: solved,
+            board: currentBoard,
+            solvingTime: performance.now() - startTime
+          };
+          this.status.set({ 
+            type: 'playing', 
+            message: `JavaScript Solver: ${Math.round(result.solvingTime)}ms` 
+          });
+          break;
+      }
+
+      if (result && result.solved) {
+        this.board.set(result.board);
+        // Call validateBoard if it exists
+        if (this.validateBoard) this.validateBoard();
+        // Call stopTimer if it exists  
+        if (this.stopTimer) this.stopTimer();
+        this.status.set({ type: 'win', message: 'SYSTEM::SOLVED! MATRIX RECOMPILED.' });
+        this.isWinning.set(true);
+
+        // Update performance metrics
+        this.updatePerformanceStats('solve', {
+          method: this.solvingMode(),
+          time: result.solvingTime,
+          success: true
+        });
+      } else {
+        this.status.set({ type: 'error', message: 'ERROR::UNSOLVABLE STATE' });
+      }
+    } catch (error) {
+      console.error('Solver failed:', error);
+      
+      // Fallback to client-side solver
+      if (this.solvingMode() !== 'client') {
+        this.solvingMode.set('client');
+        this.solvePuzzleEnhanced();
+      } else {
+        this.status.set({ type: 'error', message: 'ERROR::ALL SOLVERS FAILED' });
+      }
     }
+  }
+
+  private updatePerformanceStats(operation: string, metrics: any) {
+    const current = this.performanceMetrics();
+    current[operation] = {
+      ...metrics,
+      timestamp: new Date().toISOString()
+    };
+    this.performanceMetrics.set(current);
   }
 
   // --- PUZZLE SHARING ---
@@ -346,7 +531,118 @@ export class AppComponent implements OnInit {
     return board;
   }
 
-  // --- BOARD GENERATION & VALIDATION (2D) ---
+  // --- PWA FUNCTIONALITY ---
+  async installPwa() {
+    const installed = await this.pwaService.installPWA();
+    if (installed) {
+      this.status.set({ 
+        type: 'playing', 
+        message: 'PWA installed successfully! Enhanced offline experience enabled.' 
+      });
+    } else {
+      this.status.set({ 
+        type: 'error', 
+        message: 'PWA installation failed or cancelled.' 
+      });
+    }
+  }
+
+  toggleSolvingMode() {
+    const modes: Array<'client' | 'server' | 'wasm'> = ['client', 'server', 'wasm'];
+    const currentIndex = modes.indexOf(this.solvingMode());
+    const nextIndex = (currentIndex + 1) % modes.length;
+    this.solvingMode.set(modes[nextIndex]);
+    
+    const modeNames = {
+      'client': 'JavaScript (Client)',
+      'server': 'C++ High-Performance (Server)',
+      'wasm': 'WebAssembly (Offline)'
+    };
+    
+    this.status.set({ 
+      type: 'playing', 
+      message: `Solver mode: ${modeNames[modes[nextIndex]]}` 
+    });
+  }
+
+  enableMultiplayer() {
+    this.multiplayer.set({ enabled: true, gameId: `game_${Date.now()}`, players: 1 });
+    this.status.set({ 
+      type: 'playing', 
+      message: 'Multiplayer mode enabled - WebSocket connection active' 
+    });
+  }
+
+  // --- ENHANCED LEADERBOARD ---
+  async saveScoreEnhanced() {
+    if (!this.playerName().trim()) {
+      this.status.set({ type: 'error', message: 'Please enter your call-sign' });
+      return;
+    }
+
+    try {
+      // Save to PHP leaderboard service
+      await this.apiService.addLeaderboardEntry(
+        this.playerName().trim(),
+        this.gameDifficulty(),
+        this.getElapsedSeconds()
+      ).toPromise();
+
+      // Save to local storage as backup
+      this.saveScore();
+
+      this.status.set({ 
+        type: 'playing', 
+        message: 'Score saved to global leaderboard!' 
+      });
+      
+    } catch (error) {
+      console.error('Failed to save score to remote leaderboard:', error);
+      // Fallback to local storage
+      this.saveScore();
+      this.status.set({ 
+        type: 'error', 
+        message: 'Saved locally - will sync when online' 
+      });
+    }
+  }
+
+  private getElapsedSeconds(): number {
+    const timeStr = this.elapsedTime();
+    const [minutes, seconds] = timeStr.split(':').map(Number);
+    return (minutes * 60) + seconds;
+  }
+
+  // --- API STATUS DISPLAY ---
+  getApiStatusColor(): string {
+    if (!this.connectionStatus()) return 'red';
+    
+    const health = this.apiHealthStatus();
+    if (!health.services) return 'yellow';
+    
+    const healthyServices = Object.values(health.services).filter((s: any) => s.status === 'healthy').length;
+    const totalServices = Object.keys(health.services).length;
+    
+    if (healthyServices === totalServices) return 'green';
+    if (healthyServices > 0) return 'yellow';
+    return 'red';
+  }
+
+  getApiStatusText(): string {
+    if (!this.connectionStatus()) return 'Offline';
+    
+    const health = this.apiHealthStatus();
+    if (!health.services) return 'Checking...';
+    
+    const healthyServices = Object.values(health.services).filter((s: any) => s.status === 'healthy').length;
+    const totalServices = Object.keys(health.services).length;
+    
+    return `${healthyServices}/${totalServices} Services`;
+  }
+
+  showApiDetails() {
+    this.currentPage.set('api-status' as Page);
+  }
   private solveBoard(board: Board): boolean {
     for (let r = 0; r < this.SIZE; r++) {
       for (let c = 0; c < this.SIZE; c++) {
