@@ -1,0 +1,341 @@
+<matrix-rain-bg></matrix-rain-bg>
+<!-- Kaleidoscope Cursor Effect -->
+@if ((currentPage() === 'menu' || currentPage() === 'game') && settings().kaleidoscopeCursor) {
+  <div class="kaleidoscope-container" 
+       [style.transform]="cursorTransform()" 
+       [style.opacity]="cursorOpacity()">
+    <div class="k-ring k-ring-1"></div>
+    <div class="k-ring k-ring-2"></div>
+    <div class="k-ring k-ring-3"></div>
+  </div>
+}
+<div class="min-h-screen w-full flex flex-col items-center justify-center p-2 sm:p-4 font-tech-mono select-none relative z-10">
+  
+  @switch (currentPage()) {
+
+    @case ('menu') {
+      <div class="w-full max-w-md mx-auto flex flex-col items-center justify-center text-center">
+        <header class="mb-8">
+          <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold font-orbitron text-cyan-400 text-glow-cyan">3D Sudoku Matrix</h1>
+          <p class="text-cyan-600 mt-2">A holographic puzzle interface.</p>
+        </header>
+        <div class="w-full bg-black/60 p-6 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50">
+          <h2 class="text-xl font-bold font-orbitron text-cyan-400 text-glow-cyan border-b border-cyan-800 pb-2 mb-6">New Game</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            @for (d of difficulties; track d) {
+              <button (click)="startGame(d.level)" class="p-3 rounded-md font-semibold transition-all duration-200 border bg-black/50 border-cyan-700 hover:bg-cyan-900/50 hover:border-cyan-500 text-cyan-400 text-lg hover:scale-105 active:scale-100">
+                {{ d.name }}
+              </button>
+            }
+          </div>
+
+          <!-- Load from Code -->
+          <div class="mb-6">
+            <h2 class="text-xl font-bold font-orbitron text-cyan-400 text-glow-cyan border-b border-cyan-800 pb-2 mb-4">Load from Code</h2>
+            <div class="flex gap-2">
+              <input type="text" #codeInput
+                     (input)="puzzleCode.set(codeInput.value)"
+                     class="flex-grow bg-cyan-900/50 border border-cyan-700 rounded-lg p-2 text-center text-white font-bold text-lg focus:ring-2 focus:ring-fuchsia-500 focus:border-fuchsia-500 outline-none" 
+                     placeholder="Paste 81-digit code..."
+                     maxlength="81">
+              <button (click)="loadPuzzleFromCode()" class="p-3 rounded-md font-semibold transition-all duration-200 border bg-black/50 border-fuchsia-700 hover:bg-fuchsia-900/50 hover:border-fuchsia-500 text-fuchsia-400 text-lg hover:scale-105 active:scale-100">
+                Load
+              </button>
+            </div>
+            @if (codeError()) {
+              <p class="text-red-400 text-sm mt-2">{{ codeError() }}</p>
+            }
+          </div>
+
+          <div class="grid grid-cols-1 gap-4">
+             <button (click)="showPage('leaderboard')" class="w-full bg-fuchsia-600/50 border border-fuchsia-500 hover:bg-fuchsia-500/70 text-fuchsia-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+              Leaderboard
+            </button>
+            <div class="grid grid-cols-3 gap-4">
+              <button (click)="showPage('settings')" class="w-full bg-yellow-600/50 border border-yellow-500 hover:bg-yellow-500/70 text-yellow-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+                Settings
+              </button>
+              <button (click)="showPage('help')" class="w-full bg-yellow-600/50 border border-yellow-500 hover:bg-yellow-500/70 text-yellow-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+                Help
+              </button>
+              <button (click)="showPage('about')" class="w-full bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+                About
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    @case ('game') {
+      <div class="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 relative">
+        <!-- Win Modal -->
+        @if (isWinning()) {
+          <div class="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div class="bg-black border-2 border-fuchsia-500 p-8 rounded-lg shadow-2xl shadow-fuchsia-500/50 w-full max-w-sm text-center">
+              <h2 class="text-3xl font-orbitron text-cyan-400 text-glow-cyan mb-4">SYSTEM::SOLVED</h2>
+              <p class="text-cyan-300 mb-2">Matrix Recompiled in: <span class="font-bold text-white">{{ elapsedTime() }}</span></p>
+              <p class="text-cyan-300 mb-4">Enter your call-sign to log your time:</p>
+              <input type="text" #nameInput 
+                     (input)="playerName.set(nameInput.value)" 
+                     (keydown.enter)="saveScore()"
+                     class="w-full bg-cyan-900/50 border border-cyan-700 rounded-lg p-2 text-center text-white font-bold text-lg focus:ring-2 focus:ring-fuchsia-500 focus:border-fuchsia-500 outline-none mb-6" 
+                     placeholder="NETRUNNER"
+                     maxlength="12">
+              <button (click)="saveScore()" class="w-full bg-fuchsia-600/50 border border-fuchsia-500 hover:bg-fuchsia-500/70 text-fuchsia-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+                Save to Leaderboard
+              </button>
+            </div>
+          </div>
+        }
+
+        <!-- Share Modal -->
+        @if (showShareModal()) {
+          <div class="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div class="bg-black border-2 border-cyan-500 p-8 rounded-lg shadow-2xl shadow-cyan-500/50 w-full max-w-md text-center">
+              <h2 class="text-3xl font-orbitron text-cyan-400 text-glow-cyan mb-4">Share Puzzle Code</h2>
+              <p class="text-cyan-300 mb-4">Share this code with a friend to challenge them to the same puzzle.</p>
+              <div class="bg-cyan-900/50 border border-cyan-700 rounded-lg p-3 text-center text-white font-bold text-lg break-all mb-6">
+                {{ puzzleCode() }}
+              </div>
+              <div class="flex gap-4">
+                <button (click)="copyShareCode()" class="w-full bg-fuchsia-600/50 border border-fuchsia-500 hover:bg-fuchsia-500/70 text-fuchsia-200 font-bold py-3 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100">
+                  {{ shareButtonText() }}
+                </button>
+                 <button (click)="showShareModal.set(false)" class="w-full bg-gray-600/50 border border-gray-500 hover:bg-gray-500/70 text-gray-200 font-bold py-3 px-4 rounded-lg">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Controls Section -->
+        <div class="w-full lg:w-72 flex-shrink-0 bg-black/60 p-4 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50">
+          <div class="flex justify-between items-center border-b border-cyan-800 pb-2 mb-4">
+            <h2 class="text-xl font-bold font-orbitron text-cyan-400 text-glow-cyan">Controls</h2>
+            <div class="text-2xl font-bold text-cyan-300">{{ elapsedTime() }}</div>
+          </div>
+          
+          <button (click)="showPage('menu')" class="w-full bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-2 px-4 rounded-lg transition-transform duration-200 hover:scale-105 active:scale-100 mb-4">
+            Back to Menu
+          </button>
+          
+          <div class="grid grid-cols-2 gap-2 mb-4">
+              <button (click)="undo()" [disabled]="history().length === 0" class="w-full bg-yellow-600/50 border border-yellow-500 hover:bg-yellow-500/70 text-yellow-200 font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-transform duration-200 hover:scale-105 active:scale-100 disabled:hover:scale-100">
+                  Undo
+              </button>
+              <button (click)="redo()" [disabled]="redoStack().length === 0" class="w-full bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-transform duration-200 hover:scale-105 active:scale-100 disabled:hover:scale-100">
+                  Redo
+              </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <button (click)="useHint()" [disabled]="hints() === 0 || isWinning()" class="w-full bg-fuchsia-600/50 border border-fuchsia-500 hover:bg-fuchsia-500/70 text-fuchsia-200 font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+              Hint ({{ hints() }})
+            </button>
+            <button (click)="solvePuzzle()" [disabled]="isWinning()" class="w-full bg-yellow-600/50 border border-yellow-500 hover:bg-yellow-500/70 text-yellow-200 font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+              Solve
+            </button>
+          </div>
+          <button (click)="sharePuzzle()" class="w-full bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-2 px-4 rounded-lg mb-4">
+              Share Puzzle
+          </button>
+
+          <div class="mt-4">
+            <label class="block text-cyan-300 mb-2 font-semibold">Enter Number</label>
+            <div class="grid grid-cols-3 gap-2">
+              @for (num of [1,2,3,4,5,6,7,8,9]; track num) {
+                <button (click)="inputNumber(num)" class="aspect-square flex items-center justify-center text-2xl font-bold bg-black/30 border border-cyan-800 text-cyan-300 hover:bg-cyan-500 hover:text-black rounded-md transition-all duration-200 hover:scale-110 active:scale-105">
+                  {{ num }}
+                </button>
+              }
+              <button (click)="inputNumber(0)" class="col-span-3 h-12 flex items-center justify-center text-lg font-bold bg-black/30 border border-fuchsia-800 text-fuchsia-400 hover:bg-fuchsia-600 hover:text-black rounded-md">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 p-3 rounded-lg text-center font-semibold transition-colors duration-300" 
+              [class]="status().type === 'win' ? 'bg-cyan-500/30 text-cyan-300 text-glow-cyan' : status().type === 'error' ? 'bg-red-500/30 text-red-300' : 'bg-cyan-900/30 text-cyan-400'">
+            <p>{{ status().message }}</p>
+          </div>
+        </div>
+
+        <!-- Game Board Section -->
+        <main class="w-full flex-grow flex items-center justify-center lg:h-[75vh] min-h-[50vh] [perspective:1400px]">
+          <div class="relative w-full max-w-xl aspect-square [transform-style:preserve-3d] transition-transform duration-300 ease-out"
+              [style.transform]="boardTransform()"
+              [style.filter]="'drop-shadow(0px 30px 20px rgba(34, 211, 238, 0.15)) drop-shadow(0 0 35px rgba(34, 211, 238, 0.4))'">
+              
+              <!-- Glass Sheen Effect -->
+              <div class="absolute inset-0 rounded-lg pointer-events-none overflow-hidden [transform:translateZ(1px)]">
+                  <div class="absolute w-[400px] h-[400px] rounded-full" [style]="sheenStyle()"></div>
+              </div>
+
+              <div class="grid grid-cols-9 w-full h-full bg-black/60 backdrop-blur-[2px] rounded-lg shadow-lg border border-cyan-700/50 p-1 [transform-style:preserve-3d]">
+                  @for (row of board(); track $index; let r = $index) {
+                      @for (cell of row; track $index; let c = $index) {
+                          <div (click)="selectCell(r, c)"
+                               [class]="getCellClasses(r, c)"
+                               [class.win-cell-animate]="isWinning()"
+                               [style.animation-delay]="isWinning() ? (r * 90 + c * 10) + 'ms' : '0ms'">
+                              @if (cell !== 0) {
+                                  <span [class]="(lastEditedCell()?.row === r && lastEditedCell()?.col === c) ? (lastEditedCell()?.type === 'hint' ? 'animate-hint-reveal' : 'animate-pop') : ''">
+                                      {{ cell }}
+                                  </span>
+                              }
+                          </div>
+                      }
+                  }
+              </div>
+          </div>
+        </main>
+      </div>
+    }
+
+    @case ('leaderboard') {
+      <div class="w-full max-w-4xl mx-auto flex flex-col items-center">
+        <header class="text-center mb-6">
+          <h1 class="text-4xl font-bold font-orbitron text-cyan-400 text-glow-cyan">Leaderboard</h1>
+        </header>
+        <div class="w-full bg-black/60 p-4 sm:p-6 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50">
+          @if (leaderboard().length > 0) {
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead class="border-b-2 border-cyan-700 text-cyan-300 uppercase">
+                  <tr>
+                    <th class="p-3 text-sm">Rank</th>
+                    <th class="p-3 text-sm">Call-Sign</th>
+                    <th class="p-3 text-sm">Time</th>
+                    <th class="p-3 text-sm">Difficulty</th>
+                    <th class="p-3 text-sm hidden sm:table-cell">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (score of leaderboard(); track $index; let i = $index) {
+                    <tr class="border-b border-cyan-900/80 hover:bg-cyan-900/30">
+                      <td class="p-3 font-bold">{{ i + 1 }}</td>
+                      <td class="p-3 font-bold text-fuchsia-400">{{ score.name }}</td>
+                      <td class="p-3">{{ score.time }}</td>
+                      <td class="p-3 capitalize">{{ score.difficulty }}</td>
+                      <td class="p-3 text-sm text-cyan-500 hidden sm:table-cell">{{ formatDate(score.date) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <p class="text-center text-cyan-400 py-8">No scores yet. Be the first to complete the matrix!</p>
+          }
+          <button (click)="showPage('menu')" class="w-full mt-6 bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-3 px-4 rounded-lg">
+            Back to Menu
+          </button>
+        </div>
+      </div>
+    }
+
+    @case ('settings') {
+      <div class="w-full max-w-3xl mx-auto flex flex-col items-center">
+        <header class="text-center mb-6">
+          <h1 class="text-4xl font-bold font-orbitron text-cyan-400 text-glow-cyan">Settings</h1>
+        </header>
+        <div class="w-full bg-black/60 p-6 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50 text-cyan-300 space-y-6 text-lg">
+          
+          <!-- Kaleidoscope Cursor Toggle -->
+          <div class="flex items-center justify-between p-4 bg-cyan-900/30 rounded-lg border border-cyan-800/50">
+            <label for="kaleidoscope-toggle" class="font-semibold text-fuchsia-400">Kaleidoscope Cursor</label>
+            <button id="kaleidoscope-toggle" (click)="toggleSetting('kaleidoscopeCursor')"
+                    class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black/50 focus:ring-fuchsia-500"
+                    [class]="settings().kaleidoscopeCursor ? 'bg-cyan-500' : 'bg-gray-600'">
+              <span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300"
+                    [class]="settings().kaleidoscopeCursor ? 'translate-x-6' : 'translate-x-1'"></span>
+            </button>
+          </div>
+
+          <!-- Parallax Board Effect Toggle -->
+          <div class="flex items-center justify-between p-4 bg-cyan-900/30 rounded-lg border border-cyan-800/50">
+            <label for="parallax-toggle" class="font-semibold text-fuchsia-400">Parallax Board Effect</label>
+            <button id="parallax-toggle" (click)="toggleSetting('parallaxBoardEffect')"
+                    class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black/50 focus:ring-fuchsia-500"
+                    [class]="settings().parallaxBoardEffect ? 'bg-cyan-500' : 'bg-gray-600'">
+              <span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300"
+                    [class]="settings().parallaxBoardEffect ? 'translate-x-6' : 'translate-x-1'"></span>
+            </button>
+          </div>
+
+          <button (click)="showPage('menu')" class="w-full mt-6 bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-3 px-4 rounded-lg">
+            Back to Menu
+          </button>
+        </div>
+      </div>
+    }
+
+    @case ('help') {
+      <div class="w-full max-w-3xl mx-auto flex flex-col items-center">
+        <header class="text-center mb-6">
+          <h1 class="text-4xl font-bold font-orbitron text-cyan-400 text-glow-cyan">How to Play</h1>
+        </header>
+        <div class="w-full bg-black/60 p-6 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50 text-cyan-300 space-y-4 text-lg">
+            <div class="space-y-4">
+              <h2 class="text-2xl font-orbitron text-fuchsia-400 text-glow-fuchsia">The Rules</h2>
+              <p>The objective is to fill the 9x9 grid so that each row, column, and 3x3 box contains every digit from 1 to 9 exactly once.</p>
+              <ul class="list-disc list-inside pl-4 space-y-2">
+                  <li>Each <strong class="text-yellow-400">row</strong> must contain the digits 1-9 without repetition.</li>
+                  <li>Each <strong class="text-yellow-400">column</strong> must contain the digits 1-9 without repetition.</li>
+                  <li>Each 3x3 <strong class="text-yellow-400">box</strong> must contain the digits 1-9 without repetition.</li>
+              </ul>
+            </div>
+            <div class="border-t border-cyan-800 my-6"></div>
+            <div class="space-y-6">
+               <h2 class="text-2xl font-orbitron text-fuchsia-400 text-glow-fuchsia">Solving Techniques</h2>
+               <p>Sudoku is solved with logic, not guesswork. Here are two fundamental techniques to begin your training:</p>
+               
+               <div class="space-y-2">
+                   <h3 class="text-xl font-semibold text-yellow-400">1. Cross-Hatching (Scanning)</h3>
+                   <p class="text-cyan-400">This powerful scanning technique helps you find the only possible cell for a number within a 3x3 box.</p>
+                   <ul class="list-disc list-inside pl-4 mt-2 space-y-2 text-cyan-400">
+                       <li><strong>Step 1: Choose a number and a box.</strong> Pick a number from 1 to 9 and a 3x3 box to focus on.</li>
+                       <li><strong>Step 2: Scan the rows.</strong> Look at the three rows that pass through your chosen box. If any of these rows already have the number, you can eliminate all three cells in that row <em>inside your box</em>.</li>
+                       <li><strong>Step 3: Scan the columns.</strong> Do the same for the three columns that pass through the box. Eliminate the cells in any column that already contains your number.</li>
+                       <li><strong>Step 4: Place the number.</strong> After eliminating all impossible cells, you will often be left with just one empty cell in the box. That's where your number must go!</li>
+                   </ul>
+               </div>
+
+               <div class="space-y-2">
+                   <h3 class="text-xl font-semibold text-yellow-400">2. Hidden Singles</h3>
+                   <p class="text-cyan-400">A 'Hidden Single' is a cell that is the last remaining place a specific number can go within a single row, column, or box.</p>
+                   <ul class="list-disc list-inside pl-4 mt-2 space-y-2 text-cyan-400">
+                       <li><strong>Step 1: Focus on one unit.</strong> Choose to analyze a single row, column, or 3x3 box that isn't complete.</li>
+                       <li><strong>Step 2: Check for a number.</strong> Pick a number that is missing from that unit (e.g., a '5').</li>
+                       <li><strong>Step 3: Examine empty cells.</strong> Look at each empty cell in that unit and ask, "Could a '5' go here?" (Check if a '5' is already in that cell's row, column, AND box).</li>
+                       <li><strong>Step 4: Find the single spot.</strong> If you find only one empty cell in the entire unit you're focusing on where the '5' <em>could</em> possibly go, then you've found its spot. Place it there.</li>
+                   </ul>
+               </div>
+               
+               <p class="pt-2">Mastering these techniques is the key to recompiling any Sudoku matrix!</p>
+            </div>
+          <button (click)="showPage('menu')" class="w-full mt-6 bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-3 px-4 rounded-lg">
+            Back to Menu
+          </button>
+        </div>
+      </div>
+    }
+
+    @case ('about') {
+      <div class="w-full max-w-3xl mx-auto flex flex-col items-center">
+        <header class="text-center mb-6">
+          <h1 class="text-4xl font-bold font-orbitron text-cyan-400 text-glow-cyan">About</h1>
+        </header>
+        <div class="w-full bg-black/60 p-6 rounded-lg shadow-2xl shadow-cyan-500/10 backdrop-blur-sm border border-cyan-500/50 text-cyan-300 space-y-4 text-lg">
+            <p><strong>3D Sudoku Matrix</strong> is a modern interpretation of the classic logic puzzle, brought to life with a high-tech, holographic cyberpunk aesthetic.</p>
+            <p>This application was built using Angular with signals for state management, Tailwind CSS for styling, and a dynamic HTML canvas background for the immersive "digital rain" effect.</p>
+            <p>Challenge your mind, climb the leaderboard, and get lost in the matrix.</p>
+          <button (click)="showPage('menu')" class="w-full mt-6 bg-cyan-600/50 border border-cyan-500 hover:bg-cyan-500/70 text-cyan-200 font-bold py-3 px-4 rounded-lg">
+            Back to Menu
+          </button>
+        </div>
+      </div>
+    }
+  }
+</div>
