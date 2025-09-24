@@ -1,0 +1,19 @@
+{
+    "name": "sudoku-leaderboard",
+    "description": "PHP Leaderboard Service for 3D Sudoku Matrix",
+    "version": "1.0.0",
+    "require": {
+        "php": ">=8.1",
+        "slim/slim": "4.*",
+        "slim/psr7": "1.*",
+        "tuupola/cors-middleware": "^1.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "LeaderboardService\\": "src/"
+        }
+    },
+    "scripts": {
+        "start": "php -S 0.0.0.0:8083 index.php"
+    }
+}
