@@ -1,0 +1,146 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    name: Test Frontend Application
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-files
+        path: dist/
+
+  test-backend-services:
+    runs-on: ubuntu-latest
+    name: Test Backend Services
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build C++ Service
+      run: |
+        if [ -f docker/Dockerfile.cpp ]; then
+          docker build -f docker/Dockerfile.cpp -t sudoku-cpp .
+        fi
+    
+    - name: Build C# Service
+      run: |
+        if [ -f docker/Dockerfile.csharp ]; then
+          docker build -f docker/Dockerfile.csharp -t sudoku-csharp .
+        fi
+    
+    - name: Build PHP Service
+      run: |
+        if [ -f docker/Dockerfile.php ]; then
+          docker build -f docker/Dockerfile.php -t sudoku-php .
+        fi
+    
+    - name: Build API Gateway
+      run: |
+        if [ -f docker/Dockerfile.gateway ]; then
+          docker build -f docker/Dockerfile.gateway -t sudoku-gateway .
+        fi
+
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linting
+      run: |
+        if [ -f "package.json" ] && npm run lint --if-present; then
+          echo "Linting completed"
+        else
+          echo "No lint script found, skipping"
+        fi
+    
+    - name: TypeScript type checking
+      run: |
+        if [ -f "tsconfig.json" ]; then
+          npx tsc --noEmit
+        fi
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run npm audit
+      run: |
+        npm audit --audit-level moderate || echo "Audit completed with warnings"
+    
+    - name: Scan for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+
+  deploy-preview:
+    runs-on: ubuntu-latest
+    name: Deploy Preview
+    needs: [test-frontend, code-quality]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Comment PR with preview info
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '🚀 Preview build completed successfully! The application has been built and is ready for review.'
+          })

@@ -1,0 +1,95 @@
+name: Validate Workflows
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+
+jobs:
+  validate-yaml:
+    runs-on: ubuntu-latest
+    name: Validate YAML Syntax
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate workflow YAML
+      run: |
+        echo "Validating workflow YAML files..."
+        
+        # Check YAML syntax for all workflow files
+        for file in .github/workflows/*.yml .github/workflows/*.yaml; do
+          if [ -f "$file" ]; then
+            echo "Validating $file"
+            python -c "import yaml; yaml.safe_load(open('$file'))" || {
+              echo "❌ YAML syntax error in $file"
+              exit 1
+            }
+            echo "✅ $file is valid"
+          fi
+        done
+        
+        echo "All workflow files are valid! 🎉"
+    
+    - name: Check workflow naming conventions
+      run: |
+        echo "Checking workflow naming conventions..."
+        
+        for file in .github/workflows/*.yml; do
+          if [ -f "$file" ]; then
+            # Check if file has a name field
+            if ! grep -q "^name:" "$file"; then
+              echo "⚠️ Warning: $file should have a 'name:' field"
+            fi
+            
+            # Check if file uses kebab-case
+            filename=$(basename "$file" .yml)
+            if [[ ! "$filename" =~ ^[a-z0-9-]+$ ]]; then
+              echo "⚠️ Warning: $filename should use kebab-case naming"
+            fi
+          fi
+        done
+    
+    - name: Validate GitHub Actions syntax
+      uses: rhyeal/github-actions-yaml-syntax-check@v1
+      with:
+        file_path: '.github/workflows/'
+
+  check-unused-workflows:
+    runs-on: ubuntu-latest
+    name: Check for Common Issues
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check for common workflow issues
+      run: |
+        echo "Checking for common workflow issues..."
+        
+        # Check for hardcoded versions that should be updated
+        if grep -r "actions/checkout@v3" .github/workflows/; then
+          echo "⚠️ Found actions/checkout@v3, consider updating to v4"
+        fi
+        
+        if grep -r "actions/setup-node@v3" .github/workflows/; then
+          echo "⚠️ Found actions/setup-node@v3, consider updating to v4"
+        fi
+        
+        # Check for missing permissions
+        for file in .github/workflows/*.yml; do
+          if [ -f "$file" ]; then
+            if grep -q "GITHUB_TOKEN" "$file" && ! grep -q "permissions:" "$file"; then
+              echo "⚠️ $file uses GITHUB_TOKEN but may be missing permissions block"
+            fi
+          fi
+        done
+        
+        # Check for security best practices
+        if grep -r "\${{ github\.event\.pull_request\.head\.repo\.full_name }}" .github/workflows/; then
+          echo "🔒 Security: Found potentially unsafe PR checkout pattern"
+        fi
+        
+        echo "Workflow validation complete! ✅"

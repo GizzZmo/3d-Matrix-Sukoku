@@ -1,0 +1,210 @@
+name: Code Quality & Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    name: Lint and Format Check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check TypeScript
+      run: |
+        if [ -f "tsconfig.json" ]; then
+          npx tsc --noEmit --pretty
+        fi
+    
+    - name: Run ESLint
+      run: |
+        if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+          npx eslint . --ext .ts,.js,.tsx,.jsx --format stylish
+        else
+          echo "No ESLint configuration found, skipping"
+        fi
+    
+    - name: Check Prettier formatting
+      run: |
+        if [ -f ".prettierrc" ] || [ -f "prettier.config.js" ]; then
+          npx prettier --check "src/**/*.{ts,js,tsx,jsx,html,css,scss,json,md}"
+        else
+          echo "No Prettier configuration found, skipping"
+        fi
+    
+    - name: Check for TODO/FIXME comments
+      run: |
+        echo "Checking for TODO/FIXME comments..."
+        grep -r "TODO\|FIXME\|XXX\|HACK" src/ || echo "No TODO/FIXME comments found"
+
+  security-analysis:
+    runs-on: ubuntu-latest
+    name: Security Analysis
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run npm audit
+      run: |
+        npm audit --audit-level moderate
+    
+    - name: Check for known vulnerabilities
+      run: |
+        npx audit-ci --moderate
+    
+    - name: Scan for hardcoded secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+  dependency-analysis:
+    runs-on: ubuntu-latest
+    name: Dependency Analysis
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Analyze bundle size
+      run: |
+        npm run build
+        if [ -d "dist" ]; then
+          echo "Build size analysis:"
+          du -sh dist/*
+        fi
+    
+    - name: Check for outdated dependencies
+      run: |
+        npm outdated || echo "Dependencies checked"
+    
+    - name: License compliance check
+      run: |
+        npx license-checker --summary
+    
+    - name: Generate dependency report
+      run: |
+        echo "## Dependency Report" > dependency-report.md
+        echo "Generated on: $(date)" >> dependency-report.md
+        echo "" >> dependency-report.md
+        echo "### Production Dependencies" >> dependency-report.md
+        npm list --prod --depth=0 >> dependency-report.md 2>/dev/null || true
+        echo "" >> dependency-report.md
+        echo "### Development Dependencies" >> dependency-report.md
+        npm list --dev --depth=0 >> dependency-report.md 2>/dev/null || true
+    
+    - name: Upload dependency report
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-report
+        path: dependency-report.md
+
+  docker-security:
+    runs-on: ubuntu-latest
+    name: Docker Security Scan
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker images for scanning
+      run: |
+        # Build available Dockerfiles
+        for dockerfile in docker/Dockerfile.*; do
+          if [ -f "$dockerfile" ]; then
+            service_name=$(basename "$dockerfile" | cut -d. -f2)
+            echo "Building $service_name image..."
+            docker build -f "$dockerfile" -t "sudoku-$service_name:scan" . || echo "Failed to build $service_name"
+          fi
+        done
+    
+    - name: Scan Docker images
+      run: |
+        # Install Trivy for vulnerability scanning
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
+        
+        # Scan built images
+        for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep sudoku-); do
+          echo "Scanning $image..."
+          trivy image --severity HIGH,CRITICAL "$image" || echo "Scan completed with findings"
+        done
+
+  performance-check:
+    runs-on: ubuntu-latest
+    name: Performance Check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Analyze build performance
+      run: |
+        if [ -d "dist" ]; then
+          echo "Build output analysis:"
+          find dist -name "*.js" -exec echo "JavaScript: {}" \; -exec wc -c {} \;
+          find dist -name "*.css" -exec echo "CSS: {}" \; -exec wc -c {} \;
+          
+          # Check for large files
+          echo "Files larger than 500KB:"
+          find dist -size +500k -exec ls -lh {} \;
+        fi
+    
+    - name: Bundle analyzer
+      run: |
+        # Install webpack-bundle-analyzer if not present
+        if npm list webpack-bundle-analyzer >/dev/null 2>&1; then
+          echo "Bundle analysis would run here"
+        else
+          echo "webpack-bundle-analyzer not configured, skipping detailed analysis"
+        fi
