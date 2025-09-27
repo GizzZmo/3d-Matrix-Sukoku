@@ -1,0 +1,167 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    name: Create Release
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker images
+      run: |
+        # Build all services
+        if [ -f deploy.sh ]; then
+          chmod +x deploy.sh
+          # Build without starting services
+          docker-compose build
+        fi
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        if command -v git-cliff &> /dev/null; then
+          git-cliff --latest --strip all
+        else
+          echo "## Changes in this release" >> CHANGELOG.tmp
+          git log --oneline --no-merges $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.tmp
+          cat CHANGELOG.tmp
+        fi
+    
+    - name: Create release assets
+      run: |
+        # Create distribution package
+        mkdir -p release-assets
+        
+        # Package frontend build
+        if [ -d "dist" ]; then
+          tar -czf release-assets/frontend-build.tar.gz -C dist .
+        fi
+        
+        # Package source code without node_modules
+        tar --exclude='node_modules' --exclude='.git' --exclude='release-assets' \
+            -czf release-assets/source-code.tar.gz .
+        
+        # Create deployment scripts package
+        mkdir -p deployment-package
+        cp deploy.sh deployment-package/ 2>/dev/null || true
+        cp docker-compose.yml deployment-package/ 2>/dev/null || true
+        cp -r docker deployment-package/ 2>/dev/null || true
+        cp README.md deployment-package/ 2>/dev/null || true
+        cp QUICK_START.md deployment-package/ 2>/dev/null || true
+        tar -czf release-assets/deployment-package.tar.gz -C deployment-package .
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name || inputs.version }}
+        name: Release ${{ github.ref_name || inputs.version }}
+        body: |
+          ## 🎉 3D Sudoku Matrix Release ${{ github.ref_name || inputs.version }}
+          
+          ### 🚀 What's New
+          
+          This release includes the latest improvements to the 3D Sudoku Matrix multi-language microservices architecture.
+          
+          ### 📦 Assets
+          
+          - **frontend-build.tar.gz**: Production-ready frontend build
+          - **deployment-package.tar.gz**: Complete deployment scripts and configuration
+          - **source-code.tar.gz**: Full source code (excluding dependencies)
+          
+          ### 🏃 Quick Start
+          
+          1. Download `deployment-package.tar.gz`
+          2. Extract and run `./deploy.sh`
+          3. Access the application at `http://localhost:4200`
+          
+          ### 🐳 Docker Deployment
+          
+          ```bash
+          # Download and extract deployment package
+          wget https://github.com/GizzZmo/3d-Matrix-Sukoku/releases/download/${{ github.ref_name || inputs.version }}/deployment-package.tar.gz
+          tar -xzf deployment-package.tar.gz
+          cd deployment-package
+          
+          # Deploy with Docker
+          ./deploy.sh
+          ```
+          
+          ### 🛠️ System Requirements
+          
+          - Docker & Docker Compose
+          - Node.js 20+ (for development)
+          - Modern web browser with WebAssembly support
+          
+          ### 🔗 Documentation
+          
+          - [README](https://github.com/GizzZmo/3d-Matrix-Sukoku/blob/main/README.md)
+          - [Quick Start Guide](https://github.com/GizzZmo/3d-Matrix-Sukoku/blob/main/QUICK_START.md)
+          - [API Documentation](http://localhost:8080/api/docs) (after deployment)
+          
+          ---
+          
+          **Full Changelog**: https://github.com/GizzZmo/3d-Matrix-Sukoku/compare/v1.0.0...${{ github.ref_name || inputs.version }}
+        files: |
+          release-assets/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: create-release
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'beta') && !contains(github.ref, 'alpha')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build for production
+      run: |
+        NODE_ENV=production npm run build
+    
+    - name: Deploy notification
+      run: |
+        echo "🚀 Production deployment would start here"
+        echo "Configure your deployment target (AWS, Azure, GCP, etc.)"
+        echo "Update this workflow with your specific deployment steps"
